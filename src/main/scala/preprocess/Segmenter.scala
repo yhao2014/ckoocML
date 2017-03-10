@@ -5,11 +5,13 @@ import com.hankcs.hanlp.seg.common.Term
 import com.hankcs.hanlp.tokenizer.{IndexTokenizer, NLPTokenizer, SpeedTokenizer, StandardTokenizer}
 import org.apache.spark.ml.util.Identifiable
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
-import preprocess.utils.segment.{MyCRFSegment, MyNShortSegment}
+import utils.segment.{MyCRFSegment, MyNShortSegment}
 
 import scala.collection.JavaConversions._
 
 /**
+  * 基于HanLP的分词
+  *
   * Created by yhao on 2017/2/17.
   */
 class Segmenter(spark: SparkSession, val uid: String) extends Serializable {
@@ -38,6 +40,12 @@ class Segmenter(spark: SparkSession, val uid: String) extends Serializable {
     this.enableNature = value
     this
   }
+
+  def getInputCol: String = this.inputCol
+
+  def getOutputCol: String = this.outputCol
+
+  def getSegmentType: String = this.segmentType
 
   def this(spark: SparkSession) = this(spark, Identifiable.randomUID("segment"))
 
