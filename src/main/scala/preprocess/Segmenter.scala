@@ -4,7 +4,7 @@ import com.hankcs.hanlp.seg.Segment
 import com.hankcs.hanlp.seg.common.Term
 import com.hankcs.hanlp.tokenizer.{IndexTokenizer, NLPTokenizer, SpeedTokenizer, StandardTokenizer}
 import org.apache.spark.ml.util.Identifiable
-import org.apache.spark.sql.{DataFrame, Row, SparkSession}
+import org.apache.spark.sql.{DataFrame, Row}
 import utils.segment.{MyCRFSegment, MyNShortSegment}
 
 import scala.collection.JavaConversions._
@@ -14,12 +14,22 @@ import scala.collection.JavaConversions._
   *
   * Created by yhao on 2017/2/17.
   */
-class Segmenter(spark: SparkSession, val uid: String) extends Serializable {
+class Segmenter(val uid: String) extends Serializable {
+  //英文字符正则
+  private val enExpr = "[A-Za-z]+"
+  //数值正则，可以匹配203,2.23,2/12
+  private val numExpr = "\\d+(\\.\\d+)?(\\/\\d+)?"
+  //匹配英文字母、数字、中文汉字之外的字符
+  private val baseExpr = """[^\w-\s+\u4e00-\u9fa5]"""
 
-  private var inputCol = ""
-  private var outputCol = ""
-  private var segmentType = "StandardTokenizer"
-  private var enableNature = false
+  private var inputCol: String = ""
+  private var outputCol: String = ""
+  private var segmentType: String = "StandardTokenizer"
+  private var addNature: Boolean = false
+  private var delNum: Boolean = false
+  private var delEn: Boolean = false
+  private var minTermLen: Int = 1
+  private var minTermNum: Int = 3
 
   def setInputCol(value: String): this.type = {
     this.inputCol = value
@@ -36,8 +46,30 @@ class Segmenter(spark: SparkSession, val uid: String) extends Serializable {
     this
   }
 
-  def enableNature(value: Boolean): this.type = {
-    this.enableNature = value
+  def addNature(value: Boolean): this.type = {
+    this.addNature = value
+    this
+  }
+
+  def isDelNum(value: Boolean): this.type = {
+    this.delNum = value
+    this
+  }
+
+  def isDelEn(value: Boolean): this.type = {
+    this.delEn = value
+    this
+  }
+
+  def setMinTermLen(value: Int): this.type = {
+    require(value > 0, "最小词长度必须大于0")
+    this.minTermLen = value
+    this
+  }
+
+  def setMinTermNum(value: Int): this.type = {
+    require(value > 0, "行最小词数必须大于0")
+    this.minTermNum = value
     this
   }
 
@@ -47,9 +79,11 @@ class Segmenter(spark: SparkSession, val uid: String) extends Serializable {
 
   def getSegmentType: String = this.segmentType
 
-  def this(spark: SparkSession) = this(spark, Identifiable.randomUID("segment"))
+  def this() = this(Identifiable.randomUID("segment"))
 
   def transform(dataset: DataFrame): DataFrame = {
+    val spark = dataset.sparkSession
+
     var segment: Segment = null
     segmentType match {
       case "NShortSegment" =>
@@ -59,7 +93,7 @@ class Segmenter(spark: SparkSession, val uid: String) extends Serializable {
       case _ =>
     }
 
-    val tokens = dataset.select(inputCol).rdd.map { case Row(line: String) =>
+    val tokens = dataset.select(inputCol).rdd.flatMap{ case Row(line: String) =>
       var terms: Seq[Term] = Seq()
       segmentType match {
         case "StandardSegment" =>
@@ -79,11 +113,19 @@ class Segmenter(spark: SparkSession, val uid: String) extends Serializable {
           System.exit(1)
       }
 
-      val termSeq = terms.map(term =>
-        if (this.enableNature) term.toString else term.word
-      )
 
-      (line, termSeq)
+      val termSeq = terms.flatMap { term =>
+        val word = term.word
+        val nature = term.nature
+
+        if (this.delNum && word.matches(numExpr)) None      //去除数字
+        else if (this.delEn && word.matches(enExpr)) None   //去除英文
+        else if (word.length < minTermLen) None            //去除过短的词
+        else if (this.addNature) Some(word + "/" + nature)
+        else Some(word)
+      }
+
+      if (termSeq.nonEmpty && termSeq.size >= minTermNum) Some((line, termSeq)) else None   //去除词数过少的行
     }
 
     import spark.implicits._

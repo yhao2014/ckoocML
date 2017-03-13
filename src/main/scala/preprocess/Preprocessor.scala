@@ -28,10 +28,10 @@ class Preprocessor extends Serializable {
     val cleanDF = this.clean(filePath, spark)   //清洗数据
     val indexModel = this.indexrize(cleanDF)
     val indexDF = indexModel.transform(cleanDF)   //标签索引化
-    val segDF = this.segment(indexDF, params, spark)   //分词
+    val segDF = this.segment(indexDF, params)   //分词
     val vecModel = this.vectorize(segDF, params)
     val trainDF = vecModel.transform(segDF)   //向量化
-    this.saveModel(indexModel, vecModel, params)
+    this.saveModel(indexModel, vecModel, params)    //保存模型
 
     (trainDF, indexModel, vecModel)
   }
@@ -50,7 +50,7 @@ class Preprocessor extends Serializable {
     val cleanDF = this.clean(filePath, spark)
     val (indexModel, vecModel) = this.loadModel(params)
     val indexDF = indexModel.transform(cleanDF)
-    val segDF = this.segment(indexDF, params, spark)
+    val segDF = this.segment(indexDF, params)
     val predictDF = vecModel.transform(segDF)
 
     (predictDF, indexModel, vecModel)
@@ -113,15 +113,19 @@ class Preprocessor extends Serializable {
     *
     * @param data   输入数据
     * @param params 配置参数
-    * @param spark  SparkSession
     * @return 预处理后的DataFrame, 增加字段: "tokens", "removed"
     */
-  def segment(data: DataFrame, params: PreprocessParam, spark: SparkSession): DataFrame = {
+  def segment(data: DataFrame, params: PreprocessParam): DataFrame = {
+    val spark = data.sparkSession
 
     //=== 分词
-    val segmenter = new Segmenter(spark)
+    val segmenter = new Segmenter()
+      .isDelEn(params.delEn)
+      .isDelNum(params.delNum)
       .setSegmentType(params.segmentType)
-      .enableNature(false)
+      .addNature(params.addNature)
+      .setMinTermLen(params.minTermLen)
+      .setMinTermNum(params.minTermNum)
       .setInputCol("content")
       .setOutputCol("tokens")
     val segDF = segmenter.transform(data)

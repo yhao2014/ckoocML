@@ -28,7 +28,7 @@ object LRClassTrainDemo extends Serializable {
 
     //=== 模型训练
     val lrClassifier = new LRClassifier
-    val lrModel = lrClassifier.train(trainDF)
+    lrClassifier.train(trainDF)
 
     spark.stop()
   }

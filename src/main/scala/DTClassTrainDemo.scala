@@ -27,7 +27,7 @@ object DTClassTrainDemo extends Serializable {
 
     //=== 模型训练
     val dtClassifier = new DTClassifier
-    val dtModel = dtClassifier.train(trainDF)
+    dtClassifier.train(trainDF)
 
     spark.stop()
   }
